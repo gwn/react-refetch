@@ -5,6 +5,7 @@ import handleResponse from '../utils/handleResponse'
 import buildRequest from '../utils/buildRequest'
 import checkTypes from '../utils/checkTypes'
 import PromiseState from '../PromiseState'
+import ValueWithMeta from '../ValueWithMeta'
 import hoistStatics from 'hoist-non-react-statics'
 import invariant from 'invariant'
 import warning from 'warning'
@@ -282,7 +283,14 @@ function connect(mapPropsToRequestsToProps, defaults, options) {
 
           if (value && typeof value.then === 'function') {
             this.setAtomicState(prop, startedAt, mapping, initPS(meta))
-            return value.then(onFulfillment(meta), onRejection(meta))
+            return value.then(
+                val => val instanceof ValueWithMeta
+                    ? onFulfillment(val.meta)(val.value)
+                    : onFulfillment(meta)(val),
+                val => val instanceof ValueWithMeta
+                    ? onRejection(val.meta)(val.value)
+                    : onRejection(meta)(val),
+            )
           } else {
             return onFulfillment(meta)(value)
           }
