@@ -4,6 +4,8 @@ import shallowEqual from '../utils/shallowEqual'
 import handleResponse from '../utils/handleResponse'
 import buildRequest from '../utils/buildRequest'
 import checkTypes from '../utils/checkTypes'
+import omit from '../utils/omit'
+import mapObj from '../utils/mapObj'
 import PromiseState from '../PromiseState'
 import ValueWithMeta from '../ValueWithMeta'
 import hoistStatics from 'hoist-non-react-statics'
@@ -60,10 +62,24 @@ export default connectFactory({
   }
 })
 
-const omitChildren = function omitChildren(obj) {
-  const { children, ...rest } = obj
-  return rest
-}
+const inheritMappings = (mappings, parentMappings) => mapObj(
+  mappings,
+
+  (singleMapping, mappingName) => {
+    singleMapping =
+        typeof singleMapping === 'string' ? {url: singleMapping} : singleMapping
+
+    const mergedMapping =
+        Object.assign({}, parentMappings[mappingName], singleMapping)
+
+    return 'value' in mergedMapping && 'url' in mergedMapping
+      ? omit(
+          mergedMapping,
+          'url' in singleMapping ? 'value' : 'url'
+        )
+      : mergedMapping
+  }
+)
 
 function connect(mapPropsToRequestsToProps, defaults, options) {
   const finalMapPropsToRequestsToProps = mapPropsToRequestsToProps || defaultMapPropsToRequestsToProps
@@ -206,7 +222,7 @@ function connect(mapPropsToRequestsToProps, defaults, options) {
       componentWillReceiveProps(nextProps, nextContext) {
         if (
           !options.pure ||
-          (dependsOnProps && !shallowEqual(omitChildren(this.props), omitChildren(nextProps))) ||
+          (dependsOnProps && !shallowEqual(omit(this.props, 'children'), omit(nextProps, 'children'))) ||
           (dependsOnContext && !shallowEqual(this.context, nextContext))
         ) {
           this.refetchDataFromProps(nextProps, nextContext)
@@ -239,7 +255,7 @@ function connect(mapPropsToRequestsToProps, defaults, options) {
       }
 
       refetchDataFromProps(props = this.props, context = this.context) {
-        this.refetchDataFromMappings(finalMapPropsToRequestsToProps(omitChildren(props), context) || {})
+        this.refetchDataFromMappings(finalMapPropsToRequestsToProps(omit(props, 'children'), context) || {})
       }
 
       refetchDataFromMappings(mappings) {
@@ -249,7 +265,9 @@ function connect(mapPropsToRequestsToProps, defaults, options) {
 
           if (Function.prototype.isPrototypeOf(mapping)) {
             this.setAtomicState(prop, new Date(), mapping, (...args) => {
-              this.refetchDataFromMappings(mapping(...args))
+              this.refetchDataFromMappings(
+                inheritMappings(mapping(...args), this.state.mappings)
+              )
             })
             return
           }
@@ -348,7 +366,9 @@ function connect(mapPropsToRequestsToProps, defaults, options) {
 
             this.setAtomicState(prop, startedAt, mapping, PromiseState.resolve(value, meta), refreshTimeout, () => {
               if (mapping.andThen) {
-                this.refetchDataFromMappings(mapping.andThen(value, meta))
+                this.refetchDataFromMappings(
+                  inheritMappings(mapping.andThen(value, meta), this.state.mappings)
+                )
               }
             })
           }
@@ -368,7 +388,9 @@ function connect(mapPropsToRequestsToProps, defaults, options) {
 
             this.setAtomicState(prop, startedAt, mapping, PromiseState.reject(reason, meta), null, () => {
               if (mapping.andCatch) {
-                this.refetchDataFromMappings(mapping.andCatch(reason, meta))
+                this.refetchDataFromMappings(
+                  inheritMappings(mapping.andCatch(reason, meta), this.state.mappings)
+                )
               }
             })
           }
